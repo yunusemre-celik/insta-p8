@@ -6,11 +6,82 @@ import {
   MessageSquare, Image as ImageIcon, Timer, Eye, Megaphone, Lock,
   Link2, Zap, ChevronDown, ChevronRight, ChevronLeft, X, Loader2,
   ArrowLeft, Phone, Video, Info, Sparkles, Smile, Camera, Mic, Image as PicIcon,
-  Globe
+  Globe, Bookmark
 } from "lucide-react"
 import { TagInput } from "@/components/ui/tag-input"
 import type { ProButton, QuickReplyOption, Automation } from "@/lib/types"
 import { toast } from "sonner"
+
+export interface Step2ResponseTemplate {
+  id: string
+  name: string
+  replyMode: "both" | "dm_only" | "public_only"
+  publicReplies: string[]
+  type: "text" | "card" | "media"
+  messageText: string
+  cardTitle: string
+  cardSubtitle: string
+  cardImage: string
+  buttons: ProButton[]
+  mediaUrl: string
+  mediaType: "image" | "video" | "audio"
+  quickReplies: QuickReplyOption[]
+}
+
+const STEP2_STORAGE_KEY = "insta_step2_templates_v1"
+
+const DEFAULT_STEP2_TEMPLATES: Step2ResponseTemplate[] = [
+  {
+    id: "default-reels-link",
+    name: "Reels Yorum + DM Link (Rotasyonlu)",
+    replyMode: "both",
+    publicReplies: ["DM kutuna ilettim! 🔥", "Detayları DM olarak gönderdim 🚀", "Mesajını kontrol et! ✨"],
+    type: "text",
+    messageText: "Harika! İstediğin rehber ve kaynak bağlantısını buradan iletiyorum: https://",
+    cardTitle: "",
+    cardSubtitle: "",
+    cardImage: "",
+    buttons: [],
+    mediaUrl: "",
+    mediaType: "image",
+    quickReplies: [],
+  },
+  {
+    id: "default-card-link",
+    name: "Butonlu Kart & Web Link DM'i",
+    replyMode: "dm_only",
+    publicReplies: [],
+    type: "card",
+    messageText: "",
+    cardTitle: "Özel Rehber & Kaynaklar",
+    cardSubtitle: "Aşağıdaki butona tıklayarak hemen inceleyebilirsiniz.",
+    cardImage: "",
+    buttons: [
+      { id: "btn_1", type: "web_url", title: "Hemen İncele 🚀", url: "https://" }
+    ],
+    mediaUrl: "",
+    mediaType: "image",
+    quickReplies: [],
+  },
+  {
+    id: "default-quick-replies",
+    name: "DM + Hızlı Cevap Çipleri",
+    replyMode: "dm_only",
+    publicReplies: [],
+    type: "text",
+    messageText: "Merhaba! Hangi konuda bilgi almak istersin? Aşağıdaki seçeneklerden birine tıklayabilirsin:",
+    cardTitle: "",
+    cardSubtitle: "",
+    cardImage: "",
+    buttons: [],
+    mediaUrl: "",
+    mediaType: "image",
+    quickReplies: [
+      { id: "qr_1", title: "Fiyat Bilgisi", payload: "fiyat" },
+      { id: "qr_2", title: "İletişim", payload: "iletisim" },
+    ],
+  },
+]
 
 /* ============================================================
    AESTHETIC & SEXY WIZARD FOR INSTAGRAM AUTOMATION RULES
@@ -24,6 +95,7 @@ interface CreateRuleFormProps {
   triggerSource: "comment" | "dm" | "story"
   onSuccess: () => void
   editRule?: Automation | null
+  isClone?: boolean
 }
 
 const STEPS = [
@@ -32,8 +104,8 @@ const STEPS = [
   { key: "settings", label: "Review", sub: "Name and publish" },
 ] as const
 
-export function CreateRuleForm({ userId, triggerSource, onSuccess, editRule }: CreateRuleFormProps) {
-  const isEditing = !!editRule
+export function CreateRuleForm({ userId, triggerSource, onSuccess, editRule, isClone = false }: CreateRuleFormProps) {
+  const isEditing = !!editRule && !isClone
   const [step, setStep] = useState(0)
 
   /* ---------- WHEN ---------- */
@@ -92,7 +164,7 @@ export function CreateRuleForm({ userId, triggerSource, onSuccess, editRule }: C
         ? JSON.parse(editRule.response_content as any)
         : editRule.response_content || {}
 
-    setName(editRule.name)
+    setName(isClone ? `${editRule.name} (Kopya)` : editRule.name)
     if (["mention", "reaction", "reply"].includes(editRule.trigger_type)) {
       setStoryTriggerType(editRule.trigger_type as any)
     }
@@ -123,7 +195,107 @@ export function CreateRuleForm({ userId, triggerSource, onSuccess, editRule }: C
     } else {
       setHasSelectedReelOption(false)
     }
-  }, [editRule])
+  }, [editRule, isClone])
+
+  /* ---------- STEP 2 TEMPLATES STATE ---------- */
+  const [step2Templates, setStep2Templates] = useState<Step2ResponseTemplate[]>([])
+  const [selectedStep2TemplateId, setSelectedStep2TemplateId] = useState<string>("")
+  const [isSavingStep2Template, setIsSavingStep2Template] = useState(false)
+  const [step2TemplateNameInput, setStep2TemplateNameInput] = useState("")
+  const [step2SavedFeedback, setStep2SavedFeedback] = useState(false)
+
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(STEP2_STORAGE_KEY)
+      if (stored) {
+        const parsed = JSON.parse(stored)
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setStep2Templates(parsed)
+          return
+        }
+      }
+      setStep2Templates(DEFAULT_STEP2_TEMPLATES)
+      localStorage.setItem(STEP2_STORAGE_KEY, JSON.stringify(DEFAULT_STEP2_TEMPLATES))
+    } catch {
+      setStep2Templates(DEFAULT_STEP2_TEMPLATES)
+    }
+  }, [])
+
+  function handleApplyStep2Template(templateId: string) {
+    setSelectedStep2TemplateId(templateId)
+    if (!templateId) return
+    const t = step2Templates.find((item) => item.id === templateId)
+    if (!t) return
+
+    setReplyMode(t.replyMode || "both")
+    setPublicReplies(t.publicReplies ? [...t.publicReplies] : [])
+    setType(t.type || "text")
+    setMessageText(t.messageText || "")
+    setCardTitle(t.cardTitle || "")
+    setCardSubtitle(t.cardSubtitle || "")
+    setCardImage(t.cardImage || "")
+    setButtons(t.buttons ? t.buttons.map((b, i) => ({ ...b, id: `${Date.now()}_${i}` })) : [])
+    setMediaUrl(t.mediaUrl || "")
+    setMediaType(t.mediaType || "image")
+    setQuickReplies(t.quickReplies ? t.quickReplies.map((q, i) => ({ ...q, id: `${Date.now()}_qr${i}` })) : [])
+    toast.success(`"${t.name}" şablonu yüklendi`)
+  }
+
+  function handleSaveStep2Template() {
+    const hasContent =
+      replyMode === "public_only"
+        ? publicReplies.length > 0
+        : type === "text"
+        ? messageText.trim().length > 0
+        : type === "card"
+        ? cardTitle.trim().length > 0
+        : mediaUrl.trim().length > 0
+
+    if (!hasContent) {
+      toast.error("Şablon olarak kaydetmek için lütfen yanıt içeriğini doldurun.")
+      return
+    }
+
+    const tplName = step2TemplateNameInput.trim() || `Yanıt Şablonu (${type === "card" ? "Kart" : type === "media" ? "Medya" : "Metin"})`
+    const newTpl: Step2ResponseTemplate = {
+      id: "step2_tpl_" + Date.now().toString(),
+      name: tplName,
+      replyMode,
+      publicReplies: [...publicReplies],
+      type,
+      messageText,
+      cardTitle,
+      cardSubtitle,
+      cardImage,
+      buttons: [...buttons],
+      mediaUrl,
+      mediaType,
+      quickReplies: [...quickReplies],
+    }
+
+    const updated = [newTpl, ...step2Templates]
+    setStep2Templates(updated)
+    setSelectedStep2TemplateId(newTpl.id)
+    try {
+      localStorage.setItem(STEP2_STORAGE_KEY, JSON.stringify(updated))
+    } catch {}
+    setIsSavingStep2Template(false)
+    setStep2TemplateNameInput("")
+    setStep2SavedFeedback(true)
+    setTimeout(() => setStep2SavedFeedback(false), 3000)
+    toast.success("Yanıt şablonu başarıyla kaydedildi!")
+  }
+
+  function handleDeleteStep2Template(templateId: string) {
+    if (!confirm("Bu şablonu silmek istediğinize emin misiniz?")) return
+    const updated = step2Templates.filter((t) => t.id !== templateId)
+    setStep2Templates(updated)
+    setSelectedStep2TemplateId("")
+    try {
+      localStorage.setItem(STEP2_STORAGE_KEY, JSON.stringify(updated))
+    } catch {}
+    toast.success("Şablon silindi")
+  }
 
   /* Auto name */
   useEffect(() => {
@@ -263,7 +435,7 @@ export function CreateRuleForm({ userId, triggerSource, onSuccess, editRule }: C
   return (
     <div className="workflow-builder space-y-3">
       <div className="flex items-center justify-between gap-3">
-        <div><p className="text-xs text-muted-foreground">{isEditing ? "Editing workflow" : "New workflow"}</p><p className="mt-1 text-sm font-semibold capitalize">Started by an Instagram {sourceLabel}</p></div>
+        <div><p className="text-xs text-muted-foreground">{isEditing ? "Editing workflow" : isClone ? "Cloning workflow (New)" : "New workflow"}</p><p className="mt-1 text-sm font-semibold capitalize">Started by an Instagram {sourceLabel}</p></div>
         <span className="rounded-md bg-secondary px-2.5 py-1 text-xs font-medium">Step {step + 1} of {STEPS.length}</span>
       </div>
       {/* ── Sexy Stepper Timeline ── */}
@@ -496,6 +668,85 @@ export function CreateRuleForm({ userId, triggerSource, onSuccess, editRule }: C
                 title="What should people receive?"
                 description="Choose one reply format, then write the message exactly as it should be sent."
               />
+
+              {/* Step 2 Template Controls */}
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border bg-muted/40 p-4">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-xs font-semibold text-muted-foreground">Yanıt Şablonu:</span>
+                  <select
+                    value={selectedStep2TemplateId}
+                    onChange={(e) => handleApplyStep2Template(e.target.value)}
+                    className="max-w-[210px] truncate rounded-xl border border-border bg-background px-3 py-1.5 text-xs text-foreground focus:outline-none focus:border-accent-yellow sm:max-w-[280px]"
+                  >
+                    <option value="">-- Şablon Seç --</option>
+                    {step2Templates.map((t) => (
+                      <option key={t.id} value={t.id}>{t.name}</option>
+                    ))}
+                  </select>
+
+                  {selectedStep2TemplateId && (
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteStep2Template(selectedStep2TemplateId)}
+                      title="Seçili şablonu sil"
+                      className="rounded-lg p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-2">
+                  {step2SavedFeedback && (
+                    <span className="flex items-center gap-1 text-xs text-emerald-400 font-medium">
+                      <Check className="w-3.5 h-3.5" /> Şablon kaydedildi!
+                    </span>
+                  )}
+                  {!isSavingStep2Template ? (
+                    <button
+                      type="button"
+                      onClick={() => setIsSavingStep2Template(true)}
+                      className="inline-flex items-center gap-1.5 rounded-xl border border-border bg-card px-3 py-1.5 text-xs font-semibold text-foreground hover:bg-accent hover:border-accent-yellow/50 transition-colors"
+                      title="Bu ekranın tüm ayarlarını (akış yönü, yorum rotasyonu, DM formatı, butonlar) şablon olarak kaydet"
+                    >
+                      <Bookmark className="w-3.5 h-3.5 text-accent-yellow" />
+                      <span>Bu Yanıtı Şablon Olarak Kaydet</span>
+                    </button>
+                  ) : (
+                    <div className="flex items-center gap-1.5">
+                      <input
+                        type="text"
+                        autoFocus
+                        placeholder="Şablon adı (Örn: Rehber DM)"
+                        value={step2TemplateNameInput}
+                        onChange={(e) => setStep2TemplateNameInput(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault()
+                            handleSaveStep2Template()
+                          }
+                          if (e.key === "Escape") setIsSavingStep2Template(false)
+                        }}
+                        className="w-40 rounded-xl border border-border bg-background px-3 py-1 text-xs outline-none focus:border-accent-yellow sm:w-52"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleSaveStep2Template}
+                        className="rounded-lg bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground"
+                      >
+                        Kaydet
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setIsSavingStep2Template(false)}
+                        className="rounded p-1 text-muted-foreground hover:bg-accent"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
 
               {triggerSource === "comment" && (
                 <div className="space-y-2">

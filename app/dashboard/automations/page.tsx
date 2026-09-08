@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useState } from "react"
-import { ArrowLeft, Copy, Loader2, Pencil, Search, Trash2 } from "lucide-react"
+import { ArrowLeft, Copy, Loader2, Pencil, Plus, Search, Trash2 } from "lucide-react"
 import { useInstagramSession } from "@/hooks/use-instagram-session"
 import { QuickAutomationForm } from "@/components/dashboard/QuickAutomationForm"
 import { AssistantSettings } from "@/components/dashboard/AssistantSettings"
@@ -15,6 +15,8 @@ export default function AutomationsPage() {
   const [error, setError] = useState("")
   const [query, setQuery] = useState("")
   const [edit, setEdit] = useState<Automation | null>(null)
+  const [cloningRule, setCloningRule] = useState<Automation | null>(null)
+  const [isCreatingNew, setIsCreatingNew] = useState(false)
   const [busy, setBusy] = useState<string | null>(null)
   const [deleting, setDeleting] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
@@ -56,11 +58,27 @@ export default function AutomationsPage() {
   return <div className="mx-auto max-w-4xl px-5 py-8 sm:px-8 sm:py-12">
     <header className="mb-8 flex items-start justify-between gap-4">
       <div><h1 className="text-2xl font-semibold tracking-tight">Auto replies</h1><p className="mt-1.5 text-sm text-muted-foreground">A keyword comes in. Your answer goes out.</p></div>
-      <span className="pt-1 text-xs text-muted-foreground">{rules.filter(rule => rule.is_active).length} active</span>
+      <div className="flex items-center gap-3">
+        <button
+          type="button"
+          onClick={() => { setIsCreatingNew(true); setEdit(null); setCloningRule(null) }}
+          className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-semibold text-foreground hover:bg-accent"
+        >
+          <Plus className="size-3.5" />
+          <span>New workflow</span>
+        </button>
+        <span className="pt-1 text-xs text-muted-foreground">{rules.filter(rule => rule.is_active).length} active</span>
+      </div>
     </header>
     {edit ? <section>
       <button className="mb-4 inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground" onClick={() => setEdit(null)}><ArrowLeft className="size-4" />Back to auto replies</button>
       <CreateRuleForm key={edit.id} userId={userId} triggerSource={edit.trigger_source} editRule={edit} onSuccess={() => { setEdit(null); void refresh() }} />
+    </section> : cloningRule ? <section>
+      <button className="mb-4 inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground" onClick={() => setCloningRule(null)}><ArrowLeft className="size-4" />Back to auto replies</button>
+      <CreateRuleForm key={`clone_${cloningRule.id}`} userId={userId} triggerSource={cloningRule.trigger_source} editRule={cloningRule} isClone={true} onSuccess={() => { setCloningRule(null); void refresh() }} />
+    </section> : isCreatingNew ? <section>
+      <button className="mb-4 inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground" onClick={() => setIsCreatingNew(false)}><ArrowLeft className="size-4" />Back to auto replies</button>
+      <CreateRuleForm userId={userId} triggerSource="comment" onSuccess={() => { setIsCreatingNew(false); void refresh() }} />
     </section> : <>
       <QuickAutomationForm userId={userId} initialSource="dm" presetData={preset} onSuccess={() => { setSaved(true); void refresh() }} />
       {saved && <p role="status" className="mt-3 text-xs text-muted-foreground">Saved and active. You can add another reply above.</p>}
@@ -79,15 +97,12 @@ export default function AutomationsPage() {
                   <button disabled={!!busy} onClick={() => void update(rule)} aria-label={`${rule.is_active ? "Pause" : "Activate"} ${rule.name}`} aria-pressed={rule.is_active} className="mr-2 flex min-w-16 items-center justify-center gap-1.5 rounded-md border border-border bg-card px-2 py-1.5 text-xs">{busy === rule.id ? <Loader2 className="size-3 animate-spin" /> : <span className={`size-1.5 rounded-full ${rule.is_active ? "bg-foreground" : "bg-muted-foreground"}`} />}{rule.is_active ? "On" : "Paused"}</button>
                   <button
                     onClick={() => {
-                      const answer = rule.response_content?.message || rule.response_content?.card?.title || ""
-                      setPreset({
-                        source: rule.trigger_source,
-                        answer,
-                      })
+                      setCloningRule(rule)
+                      setEdit(null)
                       window.scrollTo({ top: 0, behavior: "smooth" })
                     }}
-                    aria-label={`Şablon olarak kullan: ${rule.name}`}
-                    title="Bu otomasyonu şablon olarak yukarıya aktar"
+                    aria-label={`Klonla: ${rule.name}`}
+                    title="Bu otomasyonun tüm Step 2 yanıt ayarlarını kopyalayarak yeni kural oluştur"
                     className={button}
                   >
                     <Copy className="size-3.5" />

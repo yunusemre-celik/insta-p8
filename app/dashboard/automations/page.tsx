@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useState } from "react"
-import { ArrowLeft, Loader2, Pencil, Search, Trash2 } from "lucide-react"
+import { ArrowLeft, Copy, Loader2, Pencil, Search, Trash2 } from "lucide-react"
 import { useInstagramSession } from "@/hooks/use-instagram-session"
 import { QuickAutomationForm } from "@/components/dashboard/QuickAutomationForm"
 import { AssistantSettings } from "@/components/dashboard/AssistantSettings"
@@ -18,6 +18,7 @@ export default function AutomationsPage() {
   const [busy, setBusy] = useState<string | null>(null)
   const [deleting, setDeleting] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
+  const [preset, setPreset] = useState<{ source: Automation["trigger_source"]; answer: string } | null>(null)
   const refresh = useCallback(async () => {
     if (!userId) return
     try {
@@ -61,7 +62,7 @@ export default function AutomationsPage() {
       <button className="mb-4 inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground" onClick={() => setEdit(null)}><ArrowLeft className="size-4" />Back to auto replies</button>
       <CreateRuleForm key={edit.id} userId={userId} triggerSource={edit.trigger_source} editRule={edit} onSuccess={() => { setEdit(null); void refresh() }} />
     </section> : <>
-      <QuickAutomationForm userId={userId} initialSource="dm" onSuccess={() => { setSaved(true); void refresh() }} />
+      <QuickAutomationForm userId={userId} initialSource="dm" presetData={preset} onSuccess={() => { setSaved(true); void refresh() }} />
       {saved && <p role="status" className="mt-3 text-xs text-muted-foreground">Saved and active. You can add another reply above.</p>}
       <section className="mt-10">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
@@ -76,6 +77,21 @@ export default function AutomationsPage() {
               {deleting === rule.id ? <div className="flex items-center gap-2 text-xs"><span>Delete this reply?</span><button disabled={!!busy} onClick={() => void update(rule, true)} className="rounded-md bg-primary px-3 py-2 text-primary-foreground">Delete</button><button onClick={() => setDeleting(null)} className={button}>Cancel</button></div> :
                 <div className="flex items-center gap-1">
                   <button disabled={!!busy} onClick={() => void update(rule)} aria-label={`${rule.is_active ? "Pause" : "Activate"} ${rule.name}`} aria-pressed={rule.is_active} className="mr-2 flex min-w-16 items-center justify-center gap-1.5 rounded-md border border-border bg-card px-2 py-1.5 text-xs">{busy === rule.id ? <Loader2 className="size-3 animate-spin" /> : <span className={`size-1.5 rounded-full ${rule.is_active ? "bg-foreground" : "bg-muted-foreground"}`} />}{rule.is_active ? "On" : "Paused"}</button>
+                  <button
+                    onClick={() => {
+                      const answer = rule.response_content?.message || rule.response_content?.card?.title || ""
+                      setPreset({
+                        source: rule.trigger_source,
+                        answer,
+                      })
+                      window.scrollTo({ top: 0, behavior: "smooth" })
+                    }}
+                    aria-label={`Şablon olarak kullan: ${rule.name}`}
+                    title="Bu otomasyonu şablon olarak yukarıya aktar"
+                    className={button}
+                  >
+                    <Copy className="size-3.5" />
+                  </button>
                   <button onClick={() => setEdit(rule)} aria-label={`Edit ${rule.name}`} className={button}><Pencil className="size-3.5" /></button>
                   <button onClick={() => setDeleting(rule.id)} aria-label={`Delete ${rule.name}`} className={button}><Trash2 className="size-3.5" /></button>
                 </div>}

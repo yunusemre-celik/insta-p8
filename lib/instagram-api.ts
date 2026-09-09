@@ -48,12 +48,21 @@ async function post(path: string, token: string, body: any): Promise<SendResult>
 export function buildCardAttachment(card: IGCard) {
   const buttons = (card.buttons || [])
     .filter((b) => b.title)
-    .map((b) => ({
-      type: b.type,
-      title: b.title,
-      url: b.type === "web_url" ? b.url : undefined,
-      payload: b.type === "postback" ? b.payload : undefined,
-    }))
+    .map((b) => {
+      let url = b.url?.trim()
+      if (b.type === "web_url" && url) {
+        if (url.startsWith("https://https://")) url = url.replace("https://https://", "https://")
+        if (!url.startsWith("http://") && !url.startsWith("https://")) {
+          url = `https://${url}`
+        }
+      }
+      return {
+        type: b.type,
+        title: b.title,
+        url: b.type === "web_url" ? url : undefined,
+        payload: b.type === "postback" ? b.payload : undefined,
+      }
+    })
   const element: any = { title: card.title, buttons }
   if (card.subtitle) element.subtitle = card.subtitle
   if (card.image_url?.startsWith("http")) element.image_url = card.image_url

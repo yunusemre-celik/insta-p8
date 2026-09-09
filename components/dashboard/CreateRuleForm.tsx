@@ -392,6 +392,9 @@ export function CreateRuleForm({ userId, triggerSource, onSuccess, editRule, isC
           if (b.type === "web_url") {
             let cleanUrl = b.url?.trim() || ""
             if (cleanUrl.startsWith("https://https://")) cleanUrl = cleanUrl.replace("https://https://", "https://")
+            if (cleanUrl && !cleanUrl.startsWith("http://") && !cleanUrl.startsWith("https://")) {
+              cleanUrl = `https://${cleanUrl}`
+            }
             return { type: "web_url" as const, title: b.title, url: cleanUrl }
           }
           return { type: "postback" as const, title: b.title, payload: b.payload }

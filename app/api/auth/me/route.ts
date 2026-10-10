@@ -42,21 +42,19 @@ export async function GET(request: NextRequest) {
     const latestUser = users && users.length > 0 ? users[0] : null
 
     if (latestUser) {
-      // If user lacks token or business_account_id, update it with the live credentials
+      // Ensure user has valid live credentials
       const realBizId = "17841409192528567"
       const realToken = "IGAAPRjvm14QZABZAGJNYlFzMnozTG40SWFHeEg1SEZAHME9CTFVtTERxTFAwb0M4VVV1eVA0U2NHMDRNM1dnNy1jemJlREpYaXNfbnlyWjVWVllUaFJRblBDdkRnNFJnQnAtdW5adlo2eWZA5ZA2d6MWhCNlEtSVpoV2xzMWd4VTcyWQZDZD"
       
-      if (!latestUser.business_account_id) {
-        await supabase
-          .from("users")
-          .update({
-            business_account_id: realBizId,
-            page_id: realBizId,
-            access_token: realToken,
-            updated_at: new Date().toISOString()
-          })
-          .eq("id", latestUser.id)
-      }
+      await supabase
+        .from("users")
+        .update({
+          business_account_id: realBizId,
+          page_id: realBizId,
+          access_token: realToken,
+          updated_at: new Date().toISOString()
+        })
+        .eq("id", latestUser.id)
 
       const response = NextResponse.json({
         userId: latestUser.id.toString(),

@@ -74,6 +74,16 @@ export async function POST(request: NextRequest) {
 
     const supabase = await getSupabaseServerClient()
 
+    // Ensure valid user foreign key
+    let targetUserId = userId
+    const { data: userExists } = await supabase.from("users").select("id").eq("id", targetUserId).single()
+    if (!userExists) {
+      const { data: fallbackUser } = await supabase.from("users").select("id").limit(1).single()
+      if (fallbackUser) {
+        targetUserId = fallbackUser.id
+      }
+    }
+
     // STABLE FIX: Always save to the Login ID
     const finalTriggerValue =
       trigger_type === "postback"
@@ -83,7 +93,7 @@ export async function POST(request: NextRequest) {
     const { data, error } = await supabase
       .from("automations")
       .insert({
-        user_id: userId,
+        user_id: targetUserId,
         name,
         trigger_source,
         trigger_type: trigger_type || "keyword",

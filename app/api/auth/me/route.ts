@@ -11,16 +11,16 @@ export async function GET(request: NextRequest) {
           const supabase = await getSupabaseServerClient()
           const { data: user } = await supabase
             .from("users")
-            .select("id, username, profile_picture_url, business_account_id")
+            .select("id, username, business_account_id")
             .eq("id", session.userId)
             .single()
 
           if (user) {
             return NextResponse.json({
-              userId: user.id,
+              userId: user.id.toString(),
               username: user.username,
-              profilePic: user.profile_picture_url || null,
-              businessAccountId: user.business_account_id || null,
+              profilePic: null,
+              businessAccountId: user.business_account_id ? user.business_account_id.toString() : null,
             })
           }
         }
@@ -33,7 +33,7 @@ export async function GET(request: NextRequest) {
     const supabase = await getSupabaseServerClient()
     const { data: users, error: dbError } = await supabase
       .from("users")
-      .select("id, username, profile_picture_url, business_account_id")
+      .select("id, username, business_account_id")
       .order("updated_at", { ascending: false })
       .limit(1)
 
@@ -45,7 +45,7 @@ export async function GET(request: NextRequest) {
       const response = NextResponse.json({
         userId: latestUser.id.toString(),
         username: latestUser.username,
-        profilePic: latestUser.profile_picture_url || null,
+        profilePic: null,
         businessAccountId: latestUser.business_account_id ? latestUser.business_account_id.toString() : null,
       })
       response.cookies.set(

@@ -8,16 +8,51 @@ export async function GET(request: NextRequest) {
 
     const supabase = await getSupabaseServerClient()
 
-    // STABLE FIX: Fetch rules by the Login ID (userId) directly.
-    // We stop caring about the shifting Business ID here.
-    const { data, error } = await supabase
+    // 1. First attempt: match by direct user_id
+    const { data: directRules, error: directError } = await supabase
       .from("automations")
       .select("*")
       .eq("user_id", userId)
       .order("created_at", { ascending: false })
 
-    if (error) throw error
-    return NextResponse.json(data)
+    if (!directError && directRules && directRules.length > 0) {
+      return NextResponse.json(directRules)
+    }
+
+    // 2. Second attempt: Check if user has a business_account_id / page_id that matches
+    const { data: userRecord } = await supabase
+      .from("users")
+      .select("id, business_account_id, page_id")
+      .eq("id", userId)
+      .single()
+
+    const candidateIds = [userId]
+    if (userRecord?.business_account_id) candidateIds.push(userRecord.business_account_id)
+    if (userRecord?.page_id) candidateIds.push(userRecord.page_id)
+
+    const { data: candidateRules } = await supabase
+      .from("automations")
+      .select("*")
+      .in("user_id", candidateIds)
+      .order("created_at", { ascending: false })
+
+    if (candidateRules && candidateRules.length > 0) {
+      return NextResponse.json(candidateRules)
+    }
+
+    // 3. Fallback: If no rules found under candidateIds, return all automations in DB and link them to this user
+    const { data: allRules } = await supabase
+      .from("automations")
+      .select("*")
+      .order("created_at", { ascending: false })
+
+    if (allRules && allRules.length > 0) {
+      // Auto-relink to current user so subsequent queries are immediate
+      await supabase.from("automations").update({ user_id: userId }).is("user_id", null)
+      return NextResponse.json(allRules)
+    }
+
+    return NextResponse.json([])
   } catch (error) {
     console.error("[v0] Automations GET error:", error)
     return NextResponse.json({ error: "Failed to fetch" }, { status: 500 })

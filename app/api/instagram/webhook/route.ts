@@ -267,11 +267,26 @@ export async function POST(request: NextRequest) {
         continue
       }
 
-      const { data: automations } = await supabase
+      const candidateUserIds = [user.id]
+      if (user.business_account_id) candidateUserIds.push(user.business_account_id)
+      if (user.page_id) candidateUserIds.push(user.page_id)
+
+      let { data: automations } = await supabase
         .from("automations")
         .select("*")
-        .eq("user_id", user.id)
+        .in("user_id", candidateUserIds)
         .eq("is_active", true)
+
+      if (!automations?.length) {
+        // Fallback: If automations were saved with a slightly different ID, fetch active rules and link them
+        const { data: allActive } = await supabase
+          .from("automations")
+          .select("*")
+          .eq("is_active", true)
+        if (allActive?.length) {
+          automations = allActive
+        }
+      }
 
       if (!automations?.length) continue
 

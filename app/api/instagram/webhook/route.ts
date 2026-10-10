@@ -181,6 +181,7 @@ export async function POST(request: NextRequest) {
   try {
     const rawBody = await request.text()
     const signature = request.headers.get("x-hub-signature-256")
+    console.log(`[webhook] 📥 INCOMING WEBHOOK POST: length=${rawBody.length}, signature=${signature ? 'YES' : 'NO'}`)
     if (!isValidSignature(rawBody, signature)) {
       // Hash prefixes are safe to log and let us tell a wrong secret from a mutated body.
       const computed = APP_SECRETS.map(

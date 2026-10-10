@@ -251,7 +251,7 @@ export async function POST(request: NextRequest) {
 
       if (!user) {
         const { data: allUsers } = await supabase.from("users").select("*")
-        if (allUsers) {
+        if (allUsers && allUsers.length > 0) {
           for (const candidate of allUsers) {
             if (!candidate.access_token) continue
             if (await verifyIdOwnership(candidate.access_token, webhookId)) {
@@ -259,6 +259,12 @@ export async function POST(request: NextRequest) {
               user = candidate
               break
             }
+          }
+          // Ultimate fallback for single-tenant/creator:
+          if (!user && allUsers.length === 1 && allUsers[0].access_token) {
+            console.log(`[webhook] 🤝 Single-user fallback: assigning webhookId ${webhookId} to ${allUsers[0].username}`)
+            await supabase.from("users").update({ page_id: webhookId, business_account_id: webhookId }).eq("id", allUsers[0].id)
+            user = allUsers[0]
           }
         }
       }

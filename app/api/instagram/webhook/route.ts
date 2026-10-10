@@ -263,7 +263,9 @@ export async function POST(request: NextRequest) {
           // Ultimate fallback for single-tenant/creator:
           if (!user && allUsers.length === 1 && allUsers[0].access_token) {
             console.log(`[webhook] 🤝 Single-user fallback: assigning webhookId ${webhookId} to ${allUsers[0].username}`)
-            await supabase.from("users").update({ page_id: webhookId, business_account_id: webhookId }).eq("id", allUsers[0].id)
+            if (webhookId && webhookId !== "0") {
+              await supabase.from("users").update({ page_id: webhookId }).eq("id", allUsers[0].id)
+            }
             user = allUsers[0]
           }
         }

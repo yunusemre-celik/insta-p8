@@ -31,29 +31,32 @@ export async function GET(request: NextRequest) {
 
     // Fallback: If no cookie or user not found by cookie, pick the latest active user from DB
     const supabase = await getSupabaseServerClient()
-    const { data: latestUser } = await supabase
+    const { data: users, error: dbError } = await supabase
       .from("users")
       .select("id, username, profile_picture_url, business_account_id")
       .order("updated_at", { ascending: false })
       .limit(1)
-      .single()
+
+    console.log("[auth/me] DB users query result:", JSON.stringify({ users, dbError }))
+
+    const latestUser = users && users.length > 0 ? users[0] : null
 
     if (latestUser) {
       const response = NextResponse.json({
-        userId: latestUser.id,
+        userId: latestUser.id.toString(),
         username: latestUser.username,
         profilePic: latestUser.profile_picture_url || null,
-        businessAccountId: latestUser.business_account_id || null,
+        businessAccountId: latestUser.business_account_id ? latestUser.business_account_id.toString() : null,
       })
       response.cookies.set(
         "insta_session",
-        JSON.stringify({ username: latestUser.username, userId: latestUser.id }),
+        JSON.stringify({ username: latestUser.username, userId: latestUser.id.toString() }),
         { path: "/", maxAge: 60 * 24 * 60 * 60, sameSite: "lax", secure: process.env.NODE_ENV === "production" }
       )
       return response
     }
 
-    return NextResponse.json({ userId: null, username: null, profilePic: null })
+    return NextResponse.json({ userId: null, username: null, profilePic: null, debugError: dbError?.message })
   } catch (error: any) {
     console.error("[auth/me] error:", error)
     return NextResponse.json({ error: error.message }, { status: 500 })

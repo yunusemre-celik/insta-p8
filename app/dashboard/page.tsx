@@ -16,13 +16,16 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    if (!userId) return
+    if (!userId) {
+      if (!sessionLoading) setLoading(false)
+      return
+    }
     fetch(`/api/dashboard/stats?userId=${userId}`)
       .then(response => response.json())
       .then(data => { if (data && !data.error) setStats(data) })
       .catch(error => console.error("Failed to load dashboard stats", error))
       .finally(() => setLoading(false))
-  }, [userId])
+  }, [userId, sessionLoading])
 
   if (sessionLoading || loading) return <div className="flex min-h-[60vh] items-center justify-center"><Loader2 className="size-5 animate-spin text-muted-foreground" /></div>
 

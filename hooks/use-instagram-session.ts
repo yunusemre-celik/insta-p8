@@ -33,11 +33,21 @@ export function useInstagramSession() {
                         setUserId(data.userId)
                         setUsername(data.username)
                         setProfilePic(data.profilePic || null)
-                        // Remove code from URL
+                        router.replace("/dashboard")
+                    } else {
+                        // Fallback to existing localStorage if code already consumed
+                        const savedId = localStorage.getItem("ig_user_id")
+                        const savedName = localStorage.getItem("ig_username")
+                        if (savedId && savedName) {
+                            setUserId(savedId)
+                            setUsername(savedName)
+                            setProfilePic(localStorage.getItem("ig_profile_pic"))
+                        }
                         router.replace("/dashboard")
                     }
                 } catch (err) {
                     console.error("Login failed:", err)
+                    router.replace("/dashboard")
                 }
             }
             // CASE B: Restore Session from LocalStorage

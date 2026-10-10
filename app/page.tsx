@@ -14,10 +14,10 @@ export default function Home() {
     const code = searchParams.get("code")
     const savedId = localStorage.getItem("ig_user_id")
 
-    if (code || savedId) {
-      // If code exists, Redirect to dashboard to handle the handshake (via the new hook)
-      // If local session exists, also redirect
-      router.replace("/dashboard?code=" + (code || ""))
+    if (code) {
+      router.replace(`/dashboard?code=${encodeURIComponent(code)}`)
+    } else if (savedId) {
+      router.replace("/dashboard")
     }
   }, [searchParams, router])
 

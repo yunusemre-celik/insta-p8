@@ -1,15 +1,17 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { getSupabaseServerClient } from "@/lib/supabase-server"
+import { CREATOR_USER_ID, CREATOR_USERNAME, normalizeUserId } from "@/lib/creator-account"
 
 export async function GET(request: NextRequest) {
-  const userId = request.nextUrl.searchParams.get("userId")
-  if (!userId) return NextResponse.json({ error: "userId required" }, { status: 400 })
+  const rawUserId = request.nextUrl.searchParams.get("userId")
+  const userId = normalizeUserId(rawUserId)
 
   const supabase = await getSupabaseServerClient()
   const { data, error } = await supabase
     .from("users")
     .select("groq_auto_reply_enabled, ai_context, groq_api_key, ai_base_url, ai_model")
-    .eq("id", userId)
+    .or(`id.eq.${userId},username.eq.${CREATOR_USERNAME}`)
+    .limit(1)
     .single()
 
   if (error || !data) return NextResponse.json({ enabled: false, ai_context: "", has_api_key: false, ai_base_url: "", ai_model: "" })
@@ -24,8 +26,8 @@ export async function GET(request: NextRequest) {
 
 export async function PUT(request: NextRequest) {
   const body = await request.json()
-  const { userId, enabled, ai_context, groq_api_key, ai_base_url, ai_model } = body
-  if (!userId) return NextResponse.json({ error: "userId required" }, { status: 400 })
+  const { userId: rawUserId, enabled, ai_context, groq_api_key, ai_base_url, ai_model } = body
+  const userId = normalizeUserId(rawUserId)
 
   const supabase = await getSupabaseServerClient()
   const update: Record<string, unknown> = {}
@@ -35,7 +37,11 @@ export async function PUT(request: NextRequest) {
   if (typeof ai_base_url === "string") update.ai_base_url = ai_base_url || null
   if (typeof ai_model === "string") update.ai_model = ai_model || null
 
-  const { error } = await supabase.from("users").update(update).eq("id", userId)
+  const { error } = await supabase
+    .from("users")
+    .update(update)
+    .or(`id.eq.${userId},username.eq.${CREATOR_USERNAME}`)
+
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json({ ok: true })
 }

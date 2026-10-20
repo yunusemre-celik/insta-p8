@@ -1,10 +1,12 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { getSupabaseServerClient } from "@/lib/supabase-server"
+import { getUserCandidateIds, normalizeUserId } from "@/lib/creator-account"
 
 export async function GET(request: NextRequest) {
     try {
-        const userId = request.nextUrl.searchParams.get("userId")
-        if (!userId) return NextResponse.json({ error: "Missing userId" }, { status: 400 })
+        const rawUserId = request.nextUrl.searchParams.get("userId")
+        const userId = normalizeUserId(rawUserId)
+        const candidateIds = getUserCandidateIds(userId)
 
         const supabase = await getSupabaseServerClient()
 
@@ -12,33 +14,33 @@ export async function GET(request: NextRequest) {
         const automationsQuery = supabase
             .from("automations")
             .select("*", { count: "exact", head: true })
-            .eq("user_id", userId)
+            .in("user_id", candidateIds)
 
         // 2. Active Triggers
         const activeQuery = supabase
             .from("automations")
             .select("*", { count: "exact", head: true })
-            .eq("user_id", userId)
+            .in("user_id", candidateIds)
             .eq("is_active", true)
 
         // 3. Audience Reached (Total Conversations)
         const audienceQuery = supabase
             .from("conversations")
             .select("*", { count: "exact", head: true })
-            .eq("user_id", userId)
+            .in("user_id", candidateIds)
 
         // 4. Messages Sent (where is_from_instagram is false, implying bot/system sent it)
         const sentQuery = supabase
             .from("messages")
             .select("*", { count: "exact", head: true })
-            .eq("user_id", userId)
+            .in("user_id", candidateIds)
             .eq("is_from_instagram", false)
 
         // 5. Recent Activity (Last 5 messages sent by bot)
         const recentQuery = supabase
             .from("messages")
             .select("id, content, created_at, sender_username, conversation_id, recipient:conversations(recipient_username)")
-            .eq("user_id", userId)
+            .in("user_id", candidateIds)
             .eq("is_from_instagram", false)
             .order("created_at", { ascending: false })
             .limit(5)

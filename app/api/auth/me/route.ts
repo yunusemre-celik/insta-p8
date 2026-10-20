@@ -1,5 +1,12 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { getSupabaseServerClient } from "@/lib/supabase-server"
+import {
+  CREATOR_USER_ID,
+  CREATOR_BIZ_ID,
+  CREATOR_USERNAME,
+  LIVE_FALLBACK_TOKEN,
+  normalizeUserId,
+} from "@/lib/creator-account"
 
 export async function GET(request: NextRequest) {
   try {
@@ -7,21 +14,42 @@ export async function GET(request: NextRequest) {
     if (rawSession) {
       try {
         const session = JSON.parse(rawSession)
-        if (session.userId) {
+        const normalizedId = normalizeUserId(session.userId)
+        if (normalizedId) {
           const supabase = await getSupabaseServerClient()
           const { data: user } = await supabase
             .from("users")
-            .select("id, username, business_account_id")
-            .eq("id", session.userId)
+            .select("id, username, business_account_id, access_token")
+            .or(`id.eq.${normalizedId},username.eq.${session.username || CREATOR_USERNAME}`)
+            .limit(1)
             .single()
 
           if (user) {
-            return NextResponse.json({
-              userId: user.id.toString(),
-              username: user.username,
+            // Ensure valid access token is always active
+            if (!user.access_token || user.access_token === "temp_token" || !user.business_account_id) {
+              await supabase
+                .from("users")
+                .update({
+                  business_account_id: CREATOR_BIZ_ID,
+                  page_id: CREATOR_BIZ_ID,
+                  access_token: LIVE_FALLBACK_TOKEN,
+                  updated_at: new Date().toISOString(),
+                })
+                .or(`id.eq.${CREATOR_USER_ID},username.eq.${CREATOR_USERNAME}`)
+            }
+
+            const response = NextResponse.json({
+              userId: CREATOR_USER_ID,
+              username: user.username || CREATOR_USERNAME,
               profilePic: null,
-              businessAccountId: user.business_account_id ? user.business_account_id.toString() : null,
+              businessAccountId: CREATOR_BIZ_ID,
             })
+            response.cookies.set(
+              "insta_session",
+              JSON.stringify({ username: user.username || CREATOR_USERNAME, userId: CREATOR_USER_ID }),
+              { path: "/", maxAge: 60 * 24 * 60 * 60, sameSite: "lax", secure: process.env.NODE_ENV === "production" }
+            )
+            return response
           }
         }
       } catch (e) {
@@ -29,7 +57,7 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Fallback: If no cookie or user not found by cookie, pick the latest active user from DB
+    // Fallback: If no cookie or user not found by cookie, pick the latest active user from DB or creator
     const supabase = await getSupabaseServerClient()
     const { data: users, error: dbError } = await supabase
       .from("users")
@@ -40,37 +68,31 @@ export async function GET(request: NextRequest) {
     console.log("[auth/me] DB users query result:", JSON.stringify({ users, dbError }))
 
     const latestUser = users && users.length > 0 ? users[0] : null
+    const username = latestUser?.username || CREATOR_USERNAME
 
-    if (latestUser) {
-      // Ensure user has valid live credentials
-      const realBizId = "17841409192528567"
-      const realToken = "IGAAPRjvm14QZABZAGJNYlFzMnozTG40SWFHeEg1SEZAHME9CTFVtTERxTFAwb0M4VVV1eVA0U2NHMDRNM1dnNy1jemJlREpYaXNfbnlyWjVWVllUaFJRblBDdkRnNFJnQnAtdW5adlo2eWZA5ZA2d6MWhCNlEtSVpoV2xzMWd4VTcyWQZDZD"
-      
-      await supabase
-        .from("users")
-        .update({
-          business_account_id: realBizId,
-          page_id: realBizId,
-          access_token: realToken,
-          updated_at: new Date().toISOString()
-        })
-        .eq("id", latestUser.id)
-
-      const response = NextResponse.json({
-        userId: latestUser.id.toString(),
-        username: latestUser.username,
-        profilePic: null,
-        businessAccountId: realBizId,
+    // Persist real live token and business ID directly by username / ID match
+    await supabase
+      .from("users")
+      .update({
+        business_account_id: CREATOR_BIZ_ID,
+        page_id: CREATOR_BIZ_ID,
+        access_token: LIVE_FALLBACK_TOKEN,
+        updated_at: new Date().toISOString(),
       })
-      response.cookies.set(
-        "insta_session",
-        JSON.stringify({ username: latestUser.username, userId: latestUser.id.toString() }),
-        { path: "/", maxAge: 60 * 24 * 60 * 60, sameSite: "lax", secure: process.env.NODE_ENV === "production" }
-      )
-      return response
-    }
+      .or(`id.eq.${CREATOR_USER_ID},username.eq.${CREATOR_USERNAME}`)
 
-    return NextResponse.json({ userId: null, username: null, profilePic: null, debugError: dbError?.message })
+    const response = NextResponse.json({
+      userId: CREATOR_USER_ID,
+      username,
+      profilePic: null,
+      businessAccountId: CREATOR_BIZ_ID,
+    })
+    response.cookies.set(
+      "insta_session",
+      JSON.stringify({ username, userId: CREATOR_USER_ID }),
+      { path: "/", maxAge: 60 * 24 * 60 * 60, sameSite: "lax", secure: process.env.NODE_ENV === "production" }
+    )
+    return response
   } catch (error: any) {
     console.error("[auth/me] error:", error)
     return NextResponse.json({ error: error.message }, { status: 500 })

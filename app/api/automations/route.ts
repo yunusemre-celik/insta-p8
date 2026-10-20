@@ -1,18 +1,27 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { getSupabaseServerClient } from "@/lib/supabase-server"
+import {
+  CREATOR_USER_ID,
+  CREATOR_BIZ_ID,
+  CREATOR_USERNAME,
+  getUserCandidateIds,
+  normalizeUserId,
+} from "@/lib/creator-account"
 
 export async function GET(request: NextRequest) {
   try {
-    const userId = request.nextUrl.searchParams.get("userId")
-    if (!userId) return NextResponse.json({ error: "Missing userId" }, { status: 400 })
+    const rawUserId = request.nextUrl.searchParams.get("userId")
+    if (!rawUserId) return NextResponse.json({ error: "Missing userId" }, { status: 400 })
 
+    const userId = normalizeUserId(rawUserId)
     const supabase = await getSupabaseServerClient()
+    const candidateIds = getUserCandidateIds(userId)
 
-    // 1. First attempt: match by direct user_id
+    // 1. First attempt: match by candidate user IDs
     const { data: directRules, error: directError } = await supabase
       .from("automations")
       .select("*")
-      .eq("user_id", userId)
+      .in("user_id", candidateIds)
       .order("created_at", { ascending: false })
 
     if (!directError && directRules && directRules.length > 0) {
@@ -23,32 +32,30 @@ export async function GET(request: NextRequest) {
     const { data: userRecord } = await supabase
       .from("users")
       .select("id, business_account_id, page_id")
-      .eq("id", userId)
+      .or(`id.eq.${userId},username.eq.${CREATOR_USERNAME}`)
+      .limit(1)
       .single()
 
-    const candidateIds = [userId]
-    if (userRecord?.business_account_id) candidateIds.push(userRecord.business_account_id)
-    if (userRecord?.page_id) candidateIds.push(userRecord.page_id)
+    if (userRecord?.business_account_id) candidateIds.push(userRecord.business_account_id.toString())
+    if (userRecord?.page_id) candidateIds.push(userRecord.page_id.toString())
 
     const { data: candidateRules } = await supabase
       .from("automations")
       .select("*")
-      .in("user_id", candidateIds)
+      .in("user_id", Array.from(new Set(candidateIds)))
       .order("created_at", { ascending: false })
 
     if (candidateRules && candidateRules.length > 0) {
       return NextResponse.json(candidateRules)
     }
 
-    // 3. Fallback: If no rules found under candidateIds, return all automations in DB and link them to this user
+    // 3. Fallback: return all automations in DB
     const { data: allRules } = await supabase
       .from("automations")
       .select("*")
       .order("created_at", { ascending: false })
 
     if (allRules && allRules.length > 0) {
-      // Auto-relink to current user so subsequent queries are immediate
-      await supabase.from("automations").update({ user_id: userId }).is("user_id", null)
       return NextResponse.json(allRules)
     }
 
@@ -74,17 +81,29 @@ export async function POST(request: NextRequest) {
 
     const supabase = await getSupabaseServerClient()
 
-    // Ensure valid user foreign key
-    let targetUserId = userId
-    const { data: userExists } = await supabase.from("users").select("id").eq("id", targetUserId).single()
+    // Ensure valid user foreign key by normalizing and validating against users table
+    let targetUserId = normalizeUserId(userId)
+    const { data: userExists } = await supabase
+      .from("users")
+      .select("id")
+      .eq("id", targetUserId)
+      .single()
+
     if (!userExists) {
-      const { data: fallbackUser } = await supabase.from("users").select("id").limit(1).single()
-      if (fallbackUser) {
-        targetUserId = fallbackUser.id
+      // Find creator user by username or primary ID
+      const { data: creatorUser } = await supabase
+        .from("users")
+        .select("id, username")
+        .or(`username.eq.${CREATOR_USERNAME},id.eq.${CREATOR_USER_ID}`)
+        .limit(1)
+        .single()
+
+      if (creatorUser) {
+        targetUserId = CREATOR_USER_ID
       }
     }
 
-    // STABLE FIX: Always save to the Login ID
+    // STABLE FIX: Always save with sanitized trigger value
     const finalTriggerValue =
       trigger_type === "postback"
         ? `PAYLOAD_${Date.now()}_${Math.random().toString(36).substring(7)}`
@@ -108,9 +127,9 @@ export async function POST(request: NextRequest) {
 
     if (error) throw error
     return NextResponse.json(data)
-  } catch (error) {
+  } catch (error: any) {
     console.error("[v0] Automations POST error:", error)
-    return NextResponse.json({ error: "Failed to create" }, { status: 500 })
+    return NextResponse.json({ error: error?.message || "Failed to create" }, { status: 500 })
   }
 }
 
@@ -149,6 +168,7 @@ export async function PUT(request: NextRequest) {
       trigger_value: trigger_value.toLowerCase(),
       response_content: content,
       specific_media_id: specific_media_id || null,
+      updated_at: new Date().toISOString(),
     }
 
     // Only update trigger_source if provided
@@ -165,9 +185,9 @@ export async function PUT(request: NextRequest) {
 
     if (error) throw error
     return NextResponse.json(data)
-  } catch (error) {
+  } catch (error: any) {
     console.error("[v0] Automations PUT error:", error)
-    return NextResponse.json({ error: "Failed to update" }, { status: 500 })
+    return NextResponse.json({ error: error?.message || "Failed to update" }, { status: 500 })
   }
 }
 
@@ -202,15 +222,15 @@ export async function PATCH(request: NextRequest) {
 
     const { data, error } = await supabase
       .from("automations")
-      .update({ is_active })
+      .update({ is_active, updated_at: new Date().toISOString() })
       .eq("id", id)
       .select()
       .single()
 
     if (error) throw error
     return NextResponse.json(data)
-  } catch (error) {
+  } catch (error: any) {
     console.error("[v0] Automations PATCH error:", error)
-    return NextResponse.json({ error: "Failed to update" }, { status: 500 })
+    return NextResponse.json({ error: error?.message || "Failed to update" }, { status: 500 })
   }
 }

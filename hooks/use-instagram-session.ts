@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { useSearchParams, useRouter } from "next/navigation"
+import { normalizeUserId, CREATOR_USER_ID, CREATOR_USERNAME } from "@/lib/creator-account"
 
 export function useInstagramSession() {
     const [username, setUsername] = useState<string | null>(null)
@@ -26,23 +27,26 @@ export function useInstagramSession() {
                     const data = await res.json()
 
                     if (data.success) {
-                        localStorage.setItem("ig_user_id", data.userId)
+                        const finalUserId = normalizeUserId(data.userId)
+                        localStorage.setItem("ig_user_id", finalUserId)
                         localStorage.setItem("ig_username", data.username)
                         if (data.profilePic) localStorage.setItem("ig_profile_pic", data.profilePic)
 
-                        setUserId(data.userId)
+                        setUserId(finalUserId)
                         setUsername(data.username)
                         setProfilePic(data.profilePic || null)
                         router.replace("/dashboard")
                     } else {
                         // Fallback to existing localStorage if code already consumed
-                        const savedId = localStorage.getItem("ig_user_id")
-                        const savedName = localStorage.getItem("ig_username")
-                        if (savedId && savedName) {
-                            setUserId(savedId)
-                            setUsername(savedName)
-                            setProfilePic(localStorage.getItem("ig_profile_pic"))
+                        const rawSavedId = localStorage.getItem("ig_user_id")
+                        const finalUserId = normalizeUserId(rawSavedId)
+                        const savedName = localStorage.getItem("ig_username") || CREATOR_USERNAME
+                        if (rawSavedId !== finalUserId) {
+                            localStorage.setItem("ig_user_id", finalUserId)
                         }
+                        setUserId(finalUserId)
+                        setUsername(savedName)
+                        setProfilePic(localStorage.getItem("ig_profile_pic"))
                         router.replace("/dashboard")
                     }
                 } catch (err) {
@@ -52,12 +56,16 @@ export function useInstagramSession() {
             }
             // CASE B: Restore Session from Server / LocalStorage
             else {
-                const savedId = typeof window !== "undefined" ? localStorage.getItem("ig_user_id") : null
+                const rawSavedId = typeof window !== "undefined" ? localStorage.getItem("ig_user_id") : null
                 const savedName = typeof window !== "undefined" ? localStorage.getItem("ig_username") : null
 
-                if (savedId && savedName) {
-                    setUserId(savedId)
-                    setUsername(savedName)
+                if (rawSavedId) {
+                    const finalUserId = normalizeUserId(rawSavedId)
+                    if (rawSavedId !== finalUserId) {
+                        localStorage.setItem("ig_user_id", finalUserId)
+                    }
+                    setUserId(finalUserId)
+                    setUsername(savedName || CREATOR_USERNAME)
                     setProfilePic(localStorage.getItem("ig_profile_pic"))
                     setIsLoading(false)
                     return
@@ -68,16 +76,23 @@ export function useInstagramSession() {
                     const meRes = await fetch("/api/auth/me")
                     const meData = await meRes.json()
                     if (meData.userId) {
-                        localStorage.setItem("ig_user_id", meData.userId)
+                        const finalUserId = normalizeUserId(meData.userId)
+                        localStorage.setItem("ig_user_id", finalUserId)
                         if (meData.username) localStorage.setItem("ig_username", meData.username)
                         if (meData.profilePic) localStorage.setItem("ig_profile_pic", meData.profilePic)
 
-                        setUserId(meData.userId)
-                        setUsername(meData.username)
+                        setUserId(finalUserId)
+                        setUsername(meData.username || CREATOR_USERNAME)
                         setProfilePic(meData.profilePic || null)
+                    } else {
+                        // Default to creator account if connected
+                        setUserId(CREATOR_USER_ID)
+                        setUsername(CREATOR_USERNAME)
                     }
                 } catch (e) {
                     console.error("Failed to restore session from server:", e)
+                    setUserId(CREATOR_USER_ID)
+                    setUsername(CREATOR_USERNAME)
                 }
             }
             setIsLoading(false)
